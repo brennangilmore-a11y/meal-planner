@@ -1,5 +1,4 @@
-// api/updateMeal.js
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -7,79 +6,45 @@ module.exports = async function handler(req, res) {
   const { request, currentMeals } = req.body;
   const apiKey = process.env.CLAUDE_API_KEY;
 
-console.log("Environment variables:", Object.keys(process.env).filter(k => k.includes('CLAUDE')));
-console.log("API Key exists:", !!apiKey);
-
   if (!apiKey) {
-    return res.status(500).json({ error: 'API key not configured' });
-  }
-
-  if (!request || !currentMeals) {
-    return res.status(400).json({ error: 'Missing request or currentMeals' });
+    return res.status(500).json({ error: 'API key missing' });
   }
 
   try {
-    const prompt = `You are a Mediterranean diet meal planning expert. The user is requesting a change to their meal plan.
-
-Current meal structure (as reference):
-${JSON.stringify(currentMeals, null, 2)}
-
-User request: ${request}
-
-Please provide the updated meals as ONLY a valid JSON object (no markdown, no code blocks, just raw JSON). 
-Include the complete meal structure with any changes applied.
-Only include the meals/days that were modified - for any day/meal not mentioned, use the exact same data from the current structure.
-Each meal needs: name, ingredients (array), and notes (step-by-step recipe).
-
-Return ONLY the JSON object, nothing else.`;
-
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
         'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json'
       },
       body: JSON.stringify({
         model: 'claude-opus-4-1',
         max_tokens: 4000,
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ]
+        messages: [{
+          role: 'user',
+          content: `You are a Mediterranean diet meal planning expert. Update the meal plan based on this request:\n\nREQUEST: ${request}\n\nCURRENT MEALS:\n${JSON.stringify(JSON.parse(currentMeals), null, 2)}\n\nPlease respond with ONLY a valid JSON object (no markdown, no code blocks, just raw JSON). Include the complete meal structure with any changes applied. Only modify the meals mentioned in the request - for all other meals, keep the exact same data. Each meal needs: name, ingredients (array of strings), and notes (step-by-step recipe).`
+        }]
       })
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Claude API error:', errorData);
-      return res.status(response.status).json({ error: 'Claude API error', details: errorData });
+      const error = await response.text();
+      return res.status(response.status).json({ error });
     }
 
     const data = await response.json();
     const content = data.content[0].text;
 
-    // Parse the JSON response
     let updatedMeals;
     try {
       updatedMeals = JSON.parse(content);
-    } catch (parseError) {
-      console.error('Failed to parse Claude response:', content);
-      return res.status(500).json({ 
-        error: 'Failed to parse meal data', 
-        rawResponse: content.substring(0, 200) 
-      });
+    } catch (e) {
+      return res.status(500).json({ error: 'Invalid JSON from Claude', content });
     }
 
-    return res.status(200).json({ 
-      success: true, 
-      meals: updatedMeals 
-    });
-
+    return res.status(200).json({ success: true, meals: updatedMeals });
   } catch (error) {
-    console.error('Error:', error);
     return res.status(500).json({ error: error.message });
   }
 }
