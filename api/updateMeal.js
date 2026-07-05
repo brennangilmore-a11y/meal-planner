@@ -23,7 +23,25 @@ export default async function handler(req, res) {
         max_tokens: 4000,
         messages: [{
           role: 'user',
-          content: `You are a Mediterranean diet meal planning expert. Update the meal plan based on this request:\n\nREQUEST: ${request}\n\nCURRENT MEALS:\n${JSON.stringify(JSON.parse(currentMeals), null, 2)}\n\nPlease respond with ONLY a valid JSON object (no markdown, no code blocks, just raw JSON). Include the complete meal structure with any changes applied. Only modify the meals mentioned in the request - for all other meals, keep the exact same data. Each meal needs: name, ingredients (array of strings), and notes (step-by-step recipe).`
+          content: `CRITICAL: You must return ONLY valid JSON. No text before or after. No markdown. No explanations.
+
+You are a Mediterranean diet meal planning expert. Update this meal plan based on the user's request.
+
+REQUEST: ${request}
+
+CURRENT MEALS (in JSON format):
+${JSON.stringify(JSON.parse(currentMeals), null, 2)}
+
+INSTRUCTIONS:
+1. Return ONLY a valid JSON object
+2. Do not include any text, explanations, or markdown code blocks
+3. Do not wrap in backticks
+4. Start with { and end with }
+5. Modify ONLY the meals mentioned in the request
+6. Keep all other meals exactly the same
+7. Each meal must have: name (string), ingredients (array of strings), notes (string with step-by-step recipe)
+
+Return the complete updated meal structure as raw JSON:`
         }]
       })
     });
@@ -38,12 +56,23 @@ export default async function handler(req, res) {
 
     // Remove markdown code blocks if present
     content = content.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+    content = content.replace(/^```\n?/, '').replace(/\n?```$/, '').trim();
+
+    // Try to extract JSON if there's extra text
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      content = jsonMatch[0];
+    }
 
     let updatedMeals;
     try {
       updatedMeals = JSON.parse(content);
     } catch (e) {
-      return res.status(500).json({ error: 'Invalid JSON from Claude', details: e.message, received: content.substring(0, 200) });
+      return res.status(500).json({ 
+        error: 'Invalid JSON from Claude', 
+        details: e.message, 
+        received: content.substring(0, 300) 
+      });
     }
 
     return res.status(200).json({ success: true, meals: updatedMeals });
