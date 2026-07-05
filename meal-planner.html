@@ -12,6 +12,7 @@
         .chat-container { max-height: 500px; overflow-y: auto; }
         .message { animation: slideIn 0.3s ease-in; }
         @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .prompt-box { background-color: #f3f4f6; border: 1px solid #d1d5db; border-radius: 0.5rem; padding: 1rem; font-family: monospace; font-size: 0.875rem; word-break: break-all; }
     </style>
 </head>
 <body>
@@ -107,10 +108,9 @@
             const [expandedMeal, setExpandedMeal] = useState(null);
             const [newIngredient, setNewIngredient] = useState('');
             const [showChat, setShowChat] = useState(false);
-            const [chatMessages, setChatMessages] = useState([]);
-            const [userInput, setUserInput] = useState('');
-            const [isLoading, setIsLoading] = useState(false);
-            const chatEndRef = useRef(null);
+            const [userRequest, setUserRequest] = useState('');
+            const [generatedPrompt, setGeneratedPrompt] = useState('');
+            const [showPrompt, setShowPrompt] = useState(false);
 
             // Save to localStorage
             useEffect(() => {
@@ -149,49 +149,45 @@
                 }
             }, []);
 
-            useEffect(() => {
-                if (chatEndRef.current) {
-                    chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
-                }
-            }, [chatMessages]);
+            const generatePrompt = () => {
+                if (!userRequest.trim()) return;
 
-            const handleSendMessage = async (e) => {
-                e.preventDefault();
-                if (!userInput.trim()) return;
+                const prompt = `You are a Mediterranean diet meal planning expert. Update the meal plan based on this request:
 
-                const userMsg = userInput;
-                setChatMessages(prev => [...prev, { role: 'user', content: userMsg }]);
-                setUserInput('');
-                setIsLoading(true);
+REQUEST: ${userRequest}
+
+CURRENT MEALS:
+${JSON.stringify(meals, null, 2)}
+
+Please respond with ONLY a valid JSON object (no markdown, no code blocks, just raw JSON).
+Include the complete meal structure with any changes applied.
+Only modify the meals mentioned in the request - for all other meals, keep the exact same data.
+Each meal needs: name, ingredients (array of strings), and notes (step-by-step recipe).`;
+
+                setGeneratedPrompt(prompt);
+                setShowPrompt(true);
+            };
+
+            const copyPrompt = () => {
+                navigator.clipboard.writeText(generatedPrompt);
+                alert('Prompt copied! Paste it in our chat to get the updated meals.');
+            };
+
+            const pasteJsonMeals = () => {
+                const jsonStr = prompt('Paste the JSON response from Claude:');
+                if (!jsonStr) return;
 
                 try {
-                    const response = await fetch('/api/updateMeal', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            request: userMsg,
-                            currentMeals: meals
-                        })
-                    });
-
-                    if (!response.ok) {
-                        const error = await response.json();
-                        setChatMessages(prev => [...prev, { role: 'assistant', content: `❌ Error: ${error.error}. Make sure your Vercel function has CLAUDE_API_KEY set in environment variables.` }]);
-                        setIsLoading(false);
-                        return;
-                    }
-
-                    const data = await response.json();
-                    if (data.success) {
-                        setMeals(data.meals);
-                        setChatMessages(prev => [...prev, { role: 'assistant', content: '✅ Meals updated! Your changes are now live.' }]);
-                    } else {
-                        setChatMessages(prev => [...prev, { role: 'assistant', content: `❌ ${data.error}` }]);
-                    }
+                    const updated = JSON.parse(jsonStr);
+                    setMeals(updated);
+                    setShowChat(false);
+                    setUserRequest('');
+                    setGeneratedPrompt('');
+                    setShowPrompt(false);
+                    alert('✅ Meals updated successfully!');
                 } catch (error) {
-                    setChatMessages(prev => [...prev, { role: 'assistant', content: `❌ Error: ${error.message}` }]);
+                    alert('❌ Invalid JSON. Please make sure you copied the exact response from Claude.');
                 }
-                setIsLoading(false);
             };
 
             const handleMealChange = (day, mealType, field, value) => {
@@ -256,7 +252,7 @@
                     React.createElement('div', { className: 'mb-8 flex items-center justify-between flex-wrap gap-4' },
                         React.createElement('div', null,
                             React.createElement('h1', { className: 'text-4xl font-bold text-gray-800 mb-2' }, '🌍 Mediterranean Meal Planner'),
-                            React.createElement('p', { className: 'text-gray-600 text-sm' }, 'Ask Claude to change any meal, or edit manually')
+                            React.createElement('p', { className: 'text-gray-600 text-sm' }, 'Ask me to change meals, or edit manually')
                         ),
                         React.createElement('div', { className: 'flex gap-2 flex-wrap' },
                             React.createElement('button', {
@@ -275,44 +271,54 @@
                     ),
 
                     // Chat Modal
-                    showChat && React.createElement('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-end z-50' },
-                        React.createElement('div', { className: 'bg-white w-full md:w-96 rounded-t-lg md:rounded-lg shadow-lg md:m-4 flex flex-col max-h-96 md:max-h-screen' },
-                            React.createElement('div', { className: 'p-4 border-b border-gray-200 flex justify-between items-center' },
-                                React.createElement('h3', { className: 'font-bold text-lg' }, '💬 Ask Claude to Update Meals'),
-                                React.createElement('button', {
-                                    onClick: () => setShowChat(false),
-                                    className: 'text-gray-500 hover:text-gray-700 text-2xl'
-                                }, '✕')
-                            ),
-                            React.createElement('div', { className: 'chat-container p-4 space-y-3 flex-1' },
-                                React.createElement('div', { className: 'bg-blue-50 p-3 rounded text-sm text-blue-900' },
-                                    '💡 Examples: "Replace Tuesday lunch with a Mediterranean pasta salad" or "Change Friday dinner to grilled fish with lemon sauce"'
+                    showChat && React.createElement('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4' },
+                        React.createElement('div', { className: 'bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-screen overflow-y-auto' },
+                            React.createElement('div', { className: 'p-6 border-b border-gray-200' },
+                                React.createElement('div', { className: 'flex justify-between items-center mb-4' },
+                                    React.createElement('h3', { className: 'font-bold text-lg' }, '💬 Ask me to update your meals'),
+                                    React.createElement('button', {
+                                        onClick: () => setShowChat(false),
+                                        className: 'text-gray-500 hover:text-gray-700 text-2xl'
+                                    }, '✕')
                                 ),
-                                chatMessages.map((msg, idx) =>
-                                    React.createElement('div', { key: idx, className: `message ${msg.role === 'user' ? 'text-right' : 'text-left'}` },
-                                        React.createElement('div', { className: `inline-block max-w-xs px-3 py-2 rounded-lg ${msg.role === 'user' ? 'bg-purple-500 text-white' : 'bg-gray-200 text-gray-800'}` },
-                                            msg.content
-                                        )
-                                    )
-                                ),
-                                isLoading && React.createElement('div', { className: 'text-center text-gray-500 text-sm' }, '🔄 Claude is thinking...'),
-                                React.createElement('div', { ref: chatEndRef })
-                            ),
-                            React.createElement('form', { onSubmit: handleSendMessage, className: 'p-4 border-t border-gray-200' },
-                                React.createElement('div', { className: 'flex gap-2' },
-                                    React.createElement('input', {
-                                        type: 'text',
-                                        value: userInput,
-                                        onChange: (e) => setUserInput(e.target.value),
-                                        placeholder: 'Describe the meal change...',
-                                        disabled: isLoading,
-                                        className: 'flex-1 border border-gray-300 rounded px-3 py-2 text-sm disabled:bg-gray-100'
+                                React.createElement('p', { className: 'text-sm text-gray-600 mb-4' }, 'Describe the meal change you want. I\'ll generate a prompt to paste in our chat.'),
+                                
+                                !showPrompt && React.createElement('div', { className: 'space-y-3' },
+                                    React.createElement('textarea', {
+                                        value: userRequest,
+                                        onChange: (e) => setUserRequest(e.target.value),
+                                        placeholder: 'Example: "Replace Tuesday lunch with a Mediterranean pasta salad" or "Change Friday dinner to grilled fish"',
+                                        className: 'w-full border border-gray-300 rounded px-3 py-2 text-sm min-h-[100px]'
                                     }),
                                     React.createElement('button', {
-                                        type: 'submit',
-                                        disabled: isLoading || !userInput.trim(),
-                                        className: 'bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 disabled:bg-gray-400 text-sm font-bold'
-                                    }, '📤')
+                                        onClick: generatePrompt,
+                                        disabled: !userRequest.trim(),
+                                        className: 'w-full bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 disabled:bg-gray-400 font-bold'
+                                    }, '📋 Generate Prompt')
+                                ),
+
+                                showPrompt && React.createElement('div', { className: 'space-y-3' },
+                                    React.createElement('div', { className: 'bg-blue-50 border border-blue-200 rounded p-3' },
+                                        React.createElement('p', { className: 'text-sm font-semibold text-blue-900 mb-2' }, '✅ Prompt generated! Copy and paste this to our chat:')
+                                    ),
+                                    React.createElement('div', { className: 'prompt-box' }, generatedPrompt),
+                                    React.createElement('button', {
+                                        onClick: copyPrompt,
+                                        className: 'w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 font-bold'
+                                    }, '📋 Copy Prompt'),
+                                    React.createElement('p', { className: 'text-sm text-gray-600 mt-4' }, '1️⃣ Copy the prompt above\n2️⃣ Paste it in our Claude chat\n3️⃣ Copy Claude\'s JSON response\n4️⃣ Click "Paste JSON Response" below'),
+                                    React.createElement('button', {
+                                        onClick: pasteJsonMeals,
+                                        className: 'w-full bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 font-bold'
+                                    }, '✅ Paste JSON Response'),
+                                    React.createElement('button', {
+                                        onClick: () => {
+                                            setGeneratedPrompt('');
+                                            setShowPrompt(false);
+                                            setUserRequest('');
+                                        },
+                                        className: 'w-full bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 font-bold mt-2'
+                                    }, 'Start Over')
                                 )
                             )
                         )
