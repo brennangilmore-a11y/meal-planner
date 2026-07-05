@@ -108,12 +108,9 @@
             const [newIngredient, setNewIngredient] = useState('');
             const [showChat, setShowChat] = useState(false);
             const [userRequest, setUserRequest] = useState('');
-            const [photoFile, setPhotoFile] = useState(null);
             const [isLoading, setIsLoading] = useState(false);
             const [chatMessage, setChatMessage] = useState('');
-            const fileInputRef = useRef(null);
 
-            // Save to localStorage
             useEffect(() => {
                 localStorage.setItem('mealPlannerData', JSON.stringify(meals));
             }, [meals]);
@@ -122,7 +119,6 @@
                 localStorage.setItem('additionalIngredients', JSON.stringify(additionalIngredients));
             }, [additionalIngredients]);
 
-            // Sync to Firebase
             useEffect(() => {
                 if (database) {
                     try {
@@ -134,7 +130,6 @@
                 }
             }, [meals, additionalIngredients]);
 
-            // Load from Firebase
             useEffect(() => {
                 if (database) {
                     try {
@@ -157,22 +152,13 @@
                 setChatMessage('');
 
                 try {
-                    const formData = new FormData();
-                    formData.append('request', userRequest);
-                    formData.append('currentMeals', JSON.stringify(meals));
-                    
-                    if (photoFile) {
-                        formData.append('photo', photoFile);
-                    }
-
-                    // Determine the backend URL
-                    const backendUrl = window.location.hostname === 'localhost' 
-                        ? 'http://localhost:3000/api/updateMeal'
-                        : `${window.location.origin}/api/updateMeal`;
-
-                    const response = await fetch(backendUrl, {
+                    const response = await fetch('/api/updateMeal', {
                         method: 'POST',
-                        body: formData
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            request: userRequest,
+                            currentMeals: JSON.stringify(meals)
+                        })
                     });
 
                     const data = await response.json();
@@ -181,11 +167,10 @@
                         setMeals(data.meals);
                         setChatMessage('✅ Meals updated successfully!');
                         setUserRequest('');
-                        setPhotoFile(null);
                         setTimeout(() => {
                             setShowChat(false);
                             setChatMessage('');
-                        }, 2000);
+                        }, 1500);
                     } else {
                         setChatMessage(`❌ Error: ${data.error}`);
                     }
@@ -257,7 +242,7 @@
                     React.createElement('div', { className: 'mb-8 flex items-center justify-between flex-wrap gap-4' },
                         React.createElement('div', null,
                             React.createElement('h1', { className: 'text-4xl font-bold text-gray-800 mb-2' }, '🌍 Mediterranean Meal Planner'),
-                            React.createElement('p', { className: 'text-gray-600 text-sm' }, 'Ask Claude to update meals (with photos!) or edit manually')
+                            React.createElement('p', { className: 'text-gray-600 text-sm' }, 'Ask Claude to update meals instantly!')
                         ),
                         React.createElement('div', { className: 'flex gap-2 flex-wrap' },
                             React.createElement('button', {
@@ -285,30 +270,15 @@
                                         className: 'text-gray-500 hover:text-gray-700 text-2xl'
                                     }, '✕')
                                 ),
-                                React.createElement('p', { className: 'text-sm text-gray-600 mb-4' }, 'Describe what you want to change. You can also upload a photo of a recipe!'),
+                                React.createElement('p', { className: 'text-sm text-gray-600 mb-4' }, 'Describe what you want to change. I\'ll use Claude to update your meals instantly!'),
                                 
                                 React.createElement('textarea', {
                                     value: userRequest,
                                     onChange: (e) => setUserRequest(e.target.value),
-                                    placeholder: 'Example: "Replace Tuesday lunch with a Mediterranean pasta salad" or upload a recipe photo',
+                                    placeholder: 'Example: "Replace Tuesday lunch with a Mediterranean pasta salad" or "Change Friday dinner to grilled fish"',
                                     className: 'w-full border border-gray-300 rounded px-3 py-2 text-sm min-h-[100px] mb-3',
                                     disabled: isLoading
                                 }),
-
-                                React.createElement('div', { className: 'flex gap-2 mb-4' },
-                                    React.createElement('button', {
-                                        onClick: () => fileInputRef.current?.click(),
-                                        className: 'flex-1 border-2 border-dashed border-purple-300 rounded px-4 py-2 text-sm hover:border-purple-500 disabled:opacity-50',
-                                        disabled: isLoading
-                                    }, photoFile ? `📸 ${photoFile.name}` : '📸 Add Recipe Photo'),
-                                    React.createElement('input', {
-                                        ref: fileInputRef,
-                                        type: 'file',
-                                        accept: 'image/*',
-                                        onChange: (e) => setPhotoFile(e.target.files?.[0] || null),
-                                        style: { display: 'none' }
-                                    })
-                                ),
 
                                 chatMessage && React.createElement('div', { className: 'text-center text-sm mb-4 ' + (chatMessage.includes('✅') ? 'text-green-600' : 'text-red-600') }, chatMessage),
 
@@ -316,7 +286,7 @@
                                     onClick: handleSendRequest,
                                     disabled: !userRequest.trim() || isLoading,
                                     className: 'w-full bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 disabled:bg-gray-400 font-bold'
-                                }, isLoading ? '⏳ Processing...' : '✨ Update My Meals')
+                                }, isLoading ? '⏳ Updating meals...' : '✨ Update My Meals')
                             )
                         )
                     ),
