@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "api/updateMeal.js": {
+      "memory": 3008,
+      "maxDuration": 30
+    }
+  },
+  "env": {
+    "CLAUDE_API_KEY": "@claude_api_key"
+  }
+}
