@@ -34,13 +34,16 @@ export default async function handler(req, res) {
     }
 
     const data = await response.json();
-    const content = data.content[0].text;
+    let content = data.content[0].text.trim();
+
+    // Remove markdown code blocks if present
+    content = content.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
 
     let updatedMeals;
     try {
       updatedMeals = JSON.parse(content);
     } catch (e) {
-      return res.status(500).json({ error: 'Invalid JSON from Claude', content });
+      return res.status(500).json({ error: 'Invalid JSON from Claude', details: e.message, received: content.substring(0, 200) });
     }
 
     return res.status(200).json({ success: true, meals: updatedMeals });
