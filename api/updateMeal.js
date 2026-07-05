@@ -7,6 +7,9 @@ export default async function handler(req, res) {
   const { request, currentMeals } = req.body;
   const apiKey = process.env.CLAUDE_API_KEY;
 
+console.log("Environment variables:", Object.keys(process.env).filter(k => k.includes('CLAUDE')));
+console.log("API Key exists:", !!apiKey);
+
   if (!apiKey) {
     return res.status(500).json({ error: 'API key not configured' });
   }
