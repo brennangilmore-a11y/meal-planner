@@ -12,7 +12,6 @@
         .chat-container { max-height: 500px; overflow-y: auto; }
         .message { animation: slideIn 0.3s ease-in; }
         @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .prompt-box { background-color: #f3f4f6; border: 1px solid #d1d5db; border-radius: 0.5rem; padding: 1rem; font-family: monospace; font-size: 0.875rem; word-break: break-all; }
     </style>
 </head>
 <body>
@@ -109,8 +108,10 @@
             const [newIngredient, setNewIngredient] = useState('');
             const [showChat, setShowChat] = useState(false);
             const [userRequest, setUserRequest] = useState('');
-            const [generatedPrompt, setGeneratedPrompt] = useState('');
-            const [showPrompt, setShowPrompt] = useState(false);
+            const [photoFile, setPhotoFile] = useState(null);
+            const [isLoading, setIsLoading] = useState(false);
+            const [chatMessage, setChatMessage] = useState('');
+            const fileInputRef = useRef(null);
 
             // Save to localStorage
             useEffect(() => {
@@ -149,45 +150,50 @@
                 }
             }, []);
 
-            const generatePrompt = () => {
+            const handleSendRequest = async () => {
                 if (!userRequest.trim()) return;
 
-                const prompt = `You are a Mediterranean diet meal planning expert. Update the meal plan based on this request:
-
-REQUEST: ${userRequest}
-
-CURRENT MEALS:
-${JSON.stringify(meals, null, 2)}
-
-Please respond with ONLY a valid JSON object (no markdown, no code blocks, just raw JSON).
-Include the complete meal structure with any changes applied.
-Only modify the meals mentioned in the request - for all other meals, keep the exact same data.
-Each meal needs: name, ingredients (array of strings), and notes (step-by-step recipe).`;
-
-                setGeneratedPrompt(prompt);
-                setShowPrompt(true);
-            };
-
-            const copyPrompt = () => {
-                navigator.clipboard.writeText(generatedPrompt);
-                alert('Prompt copied! Paste it in our chat to get the updated meals.');
-            };
-
-            const pasteJsonMeals = () => {
-                const jsonStr = prompt('Paste the JSON response from Claude:');
-                if (!jsonStr) return;
+                setIsLoading(true);
+                setChatMessage('');
 
                 try {
-                    const updated = JSON.parse(jsonStr);
-                    setMeals(updated);
-                    setShowChat(false);
-                    setUserRequest('');
-                    setGeneratedPrompt('');
-                    setShowPrompt(false);
-                    alert('✅ Meals updated successfully!');
+                    const formData = new FormData();
+                    formData.append('request', userRequest);
+                    formData.append('currentMeals', JSON.stringify(meals));
+                    
+                    if (photoFile) {
+                        formData.append('photo', photoFile);
+                    }
+
+                    // Determine the backend URL
+                    const backendUrl = window.location.hostname === 'localhost' 
+                        ? 'http://localhost:3000/api/updateMeal'
+                        : `${window.location.origin}/api/updateMeal`;
+
+                    const response = await fetch(backendUrl, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        setMeals(data.meals);
+                        setChatMessage('✅ Meals updated successfully!');
+                        setUserRequest('');
+                        setPhotoFile(null);
+                        setTimeout(() => {
+                            setShowChat(false);
+                            setChatMessage('');
+                        }, 2000);
+                    } else {
+                        setChatMessage(`❌ Error: ${data.error}`);
+                    }
                 } catch (error) {
-                    alert('❌ Invalid JSON. Please make sure you copied the exact response from Claude.');
+                    setChatMessage(`❌ Error: ${error.message}`);
                 }
+
+                setIsLoading(false);
             };
 
             const handleMealChange = (day, mealType, field, value) => {
@@ -248,11 +254,10 @@ Each meal needs: name, ingredients (array of strings), and notes (step-by-step r
 
             return React.createElement('div', { className: 'min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-6' },
                 React.createElement('div', { className: 'max-w-6xl mx-auto' },
-                    // Header
                     React.createElement('div', { className: 'mb-8 flex items-center justify-between flex-wrap gap-4' },
                         React.createElement('div', null,
                             React.createElement('h1', { className: 'text-4xl font-bold text-gray-800 mb-2' }, '🌍 Mediterranean Meal Planner'),
-                            React.createElement('p', { className: 'text-gray-600 text-sm' }, 'Ask me to change meals, or edit manually')
+                            React.createElement('p', { className: 'text-gray-600 text-sm' }, 'Ask Claude to update meals (with photos!) or edit manually')
                         ),
                         React.createElement('div', { className: 'flex gap-2 flex-wrap' },
                             React.createElement('button', {
@@ -270,9 +275,8 @@ Each meal needs: name, ingredients (array of strings), and notes (step-by-step r
                         )
                     ),
 
-                    // Chat Modal
                     showChat && React.createElement('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4' },
-                        React.createElement('div', { className: 'bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-screen overflow-y-auto' },
+                        React.createElement('div', { className: 'bg-white rounded-lg shadow-lg max-w-2xl w-full' },
                             React.createElement('div', { className: 'p-6 border-b border-gray-200' },
                                 React.createElement('div', { className: 'flex justify-between items-center mb-4' },
                                     React.createElement('h3', { className: 'font-bold text-lg' }, '💬 Ask me to update your meals'),
@@ -281,50 +285,42 @@ Each meal needs: name, ingredients (array of strings), and notes (step-by-step r
                                         className: 'text-gray-500 hover:text-gray-700 text-2xl'
                                     }, '✕')
                                 ),
-                                React.createElement('p', { className: 'text-sm text-gray-600 mb-4' }, 'Describe the meal change you want. I\'ll generate a prompt to paste in our chat.'),
+                                React.createElement('p', { className: 'text-sm text-gray-600 mb-4' }, 'Describe what you want to change. You can also upload a photo of a recipe!'),
                                 
-                                !showPrompt && React.createElement('div', { className: 'space-y-3' },
-                                    React.createElement('textarea', {
-                                        value: userRequest,
-                                        onChange: (e) => setUserRequest(e.target.value),
-                                        placeholder: 'Example: "Replace Tuesday lunch with a Mediterranean pasta salad" or "Change Friday dinner to grilled fish"',
-                                        className: 'w-full border border-gray-300 rounded px-3 py-2 text-sm min-h-[100px]'
-                                    }),
+                                React.createElement('textarea', {
+                                    value: userRequest,
+                                    onChange: (e) => setUserRequest(e.target.value),
+                                    placeholder: 'Example: "Replace Tuesday lunch with a Mediterranean pasta salad" or upload a recipe photo',
+                                    className: 'w-full border border-gray-300 rounded px-3 py-2 text-sm min-h-[100px] mb-3',
+                                    disabled: isLoading
+                                }),
+
+                                React.createElement('div', { className: 'flex gap-2 mb-4' },
                                     React.createElement('button', {
-                                        onClick: generatePrompt,
-                                        disabled: !userRequest.trim(),
-                                        className: 'w-full bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 disabled:bg-gray-400 font-bold'
-                                    }, '📋 Generate Prompt')
+                                        onClick: () => fileInputRef.current?.click(),
+                                        className: 'flex-1 border-2 border-dashed border-purple-300 rounded px-4 py-2 text-sm hover:border-purple-500 disabled:opacity-50',
+                                        disabled: isLoading
+                                    }, photoFile ? `📸 ${photoFile.name}` : '📸 Add Recipe Photo'),
+                                    React.createElement('input', {
+                                        ref: fileInputRef,
+                                        type: 'file',
+                                        accept: 'image/*',
+                                        onChange: (e) => setPhotoFile(e.target.files?.[0] || null),
+                                        style: { display: 'none' }
+                                    })
                                 ),
 
-                                showPrompt && React.createElement('div', { className: 'space-y-3' },
-                                    React.createElement('div', { className: 'bg-blue-50 border border-blue-200 rounded p-3' },
-                                        React.createElement('p', { className: 'text-sm font-semibold text-blue-900 mb-2' }, '✅ Prompt generated! Copy and paste this to our chat:')
-                                    ),
-                                    React.createElement('div', { className: 'prompt-box' }, generatedPrompt),
-                                    React.createElement('button', {
-                                        onClick: copyPrompt,
-                                        className: 'w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 font-bold'
-                                    }, '📋 Copy Prompt'),
-                                    React.createElement('p', { className: 'text-sm text-gray-600 mt-4' }, '1️⃣ Copy the prompt above\n2️⃣ Paste it in our Claude chat\n3️⃣ Copy Claude\'s JSON response\n4️⃣ Click "Paste JSON Response" below'),
-                                    React.createElement('button', {
-                                        onClick: pasteJsonMeals,
-                                        className: 'w-full bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 font-bold'
-                                    }, '✅ Paste JSON Response'),
-                                    React.createElement('button', {
-                                        onClick: () => {
-                                            setGeneratedPrompt('');
-                                            setShowPrompt(false);
-                                            setUserRequest('');
-                                        },
-                                        className: 'w-full bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 font-bold mt-2'
-                                    }, 'Start Over')
-                                )
+                                chatMessage && React.createElement('div', { className: 'text-center text-sm mb-4 ' + (chatMessage.includes('✅') ? 'text-green-600' : 'text-red-600') }, chatMessage),
+
+                                React.createElement('button', {
+                                    onClick: handleSendRequest,
+                                    disabled: !userRequest.trim() || isLoading,
+                                    className: 'w-full bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 disabled:bg-gray-400 font-bold'
+                                }, isLoading ? '⏳ Processing...' : '✨ Update My Meals')
                             )
                         )
                     ),
 
-                    // Meals Section
                     React.createElement('div', { className: 'bg-white rounded-lg shadow-lg p-6 mb-8' },
                         React.createElement('h2', { className: 'text-2xl font-bold text-gray-800 mb-6' }, 'Meal Schedule'),
                         React.createElement('div', { className: 'grid grid-cols-1 lg:grid-cols-2 gap-4' },
@@ -411,7 +407,6 @@ Each meal needs: name, ingredients (array of strings), and notes (step-by-step r
                         )
                     ),
 
-                    // Pantry Staples
                     React.createElement('div', { className: 'bg-white rounded-lg shadow-lg p-6 mb-8' },
                         React.createElement('h2', { className: 'text-2xl font-bold text-gray-800 mb-4' }, 'Pantry Staples'),
                         editMode && React.createElement('div', { className: 'flex gap-2 mb-4' },
@@ -441,7 +436,6 @@ Each meal needs: name, ingredients (array of strings), and notes (step-by-step r
                         )
                     ),
 
-                    // Shopping List
                     React.createElement('div', { className: 'bg-white rounded-lg shadow-lg p-6' },
                         React.createElement('h2', { className: 'text-2xl font-bold text-gray-800 mb-4' }, 'Shopping List'),
                         React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-3' },
